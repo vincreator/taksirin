@@ -272,7 +272,7 @@ async def analyze_text(query: str) -> ItemAnalysis:
         remaining = max(1, int(_TEXT_LOCAL_BLOCK_UNTIL - now))
         result = _manual_analysis(
             query,
-            error=f"{AI_PROVIDER_LABEL} sedang rate limit, coba lagi sekitar {remaining} detik.",
+            error=f"AI sedang rate limit, coba lagi sekitar {remaining} detik.",
         )
         _set_cached_analysis(query, result)
         return result
@@ -314,6 +314,13 @@ async def analyze_text(query: str) -> ItemAnalysis:
             estimated_price_max=data.get("estimated_price_max"),
             confidence=data.get("confidence", "medium"),
         )
+        logger.info(
+            "Normalized analysis | item=%s | condition=%s | price=%s-%s",
+            result.item_name,
+            result.condition_guess,
+            result.estimated_price_min,
+            result.estimated_price_max,
+        )
         _set_cached_analysis(query, result)
         return result
 
@@ -323,7 +330,7 @@ async def analyze_text(query: str) -> ItemAnalysis:
             wait_seconds = _extract_retry_seconds(err_text)
             _TEXT_LOCAL_BLOCK_UNTIL = time.monotonic() + wait_seconds
             logger.warning("%s quota/rate-limit. Fallback manual %ss.", AI_PROVIDER_LABEL, wait_seconds)
-            err_text = f"{AI_PROVIDER_LABEL} kena quota/rate limit, coba lagi sekitar {wait_seconds} detik."
+            err_text = f"AI kena quota/rate limit, coba lagi sekitar {wait_seconds} detik."
         else:
             logger.warning("%s API error: %s", AI_PROVIDER_LABEL, err_text[:300])
         result = _manual_analysis(query, error=err_text)

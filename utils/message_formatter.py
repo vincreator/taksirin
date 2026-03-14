@@ -6,7 +6,6 @@ Membuat pesan Telegram yang rapi dari hasil analisis AI.
 
 from __future__ import annotations
 
-from config import AI_PROVIDER_LABEL
 from services.vision_service import ItemAnalysis
 
 

@@ -5,6 +5,8 @@ load_dotenv()
 
 # ─── Telegram ───────────────────────────────────────────────────────────────
 BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+OWNER_TELEGRAM_ID_RAW: str = os.getenv("OWNER_TELEGRAM_ID", "").strip()
+OWNER_TELEGRAM_ID: int | None = int(OWNER_TELEGRAM_ID_RAW) if OWNER_TELEGRAM_ID_RAW else None
 
 # ─── AI Provider ─────────────────────────────────────────────────────────────
 AI_PROVIDER: str = os.getenv("AI_PROVIDER", "gemini").strip().lower()

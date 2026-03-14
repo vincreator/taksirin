@@ -4,10 +4,11 @@ Bot Telegram untuk membantu menaksir harga barang berbasis teks menggunakan prov
 
 ## Fitur
 
-- 📝 Kirim nama barang dalam bentuk teks
+- 📝 Analisis hanya lewat command `/taksir`
 - 🤖 Gemini atau Groq merapikan query dan memahami konteks barang
 - 💰 Bot memberi estimasi harga, kategori, merek, dan tingkat keyakinan
 - 🔎 Bot memberi keyword pencarian yang lebih tepat
+- 🔒 Chat private bisa dibatasi hanya untuk owner tertentu
 
 ## Struktur Project
 
@@ -36,6 +37,7 @@ taksirin/
 
 ```env
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+OWNER_TELEGRAM_ID=123456789
 AI_PROVIDER=gemini
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.0-flash-lite
@@ -63,7 +65,7 @@ python bot.py
 
 1. Jalankan bot
 2. Kirim `/start`
-3. Kirim teks seperti `iPhone 13 128GB` atau `Honda Beat 2022`
+3. Kirim command seperti `/taksir iPhone 13 128GB` atau `/taksir Honda Beat 2022`
 4. Bot akan mengembalikan ringkasan analisis dan estimasi harga
 
 ## Catatan
