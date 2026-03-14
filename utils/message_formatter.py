@@ -30,10 +30,31 @@ def format_ai_summary(analysis: ItemAnalysis) -> str:
     lines.append(f"🏭 *Merek:* {_escape(analysis.brand)}")
     lines.append(f"📂 *Kategori:* {_escape(analysis.category)}")
     lines.append(f"🔧 *Kondisi:* {_escape(analysis.condition_guess)}")
+    if analysis.condition_score is not None:
+        lines.append(f"📉 *Skor kondisi:* {_escape(str(analysis.condition_score))}/100")
     lines.append(f"{confidence_emoji} *Keyakinan ID:* {analysis.confidence.capitalize()}")
 
     if analysis.description:
         lines.append(f"📝 {_escape(analysis.description)}")
+
+    if analysis.replaced_parts:
+        lines.append("🔄 *Part yang disebut sudah diganti:*")
+        for item in analysis.replaced_parts[:5]:
+            lines.append(f"• {_escape(item)}")
+
+    if analysis.known_defects:
+        lines.append("⚠️ *Minus/Kendala yang terdeteksi:*")
+        for item in analysis.known_defects[:6]:
+            lines.append(f"• {_escape(item)}")
+
+    if analysis.positive_notes:
+        lines.append("✅ *Catatan positif:*")
+        for item in analysis.positive_notes[:5]:
+            lines.append(f"• {_escape(item)}")
+
+    lines.append(f"📦 *Kelengkapan:* {_escape(analysis.completeness)}")
+    lines.append(f"🛡️ *Garansi:* {_escape(analysis.warranty_status)}")
+    lines.append(f"⏱️ *Estimasi pemakaian:* {_escape(analysis.usage_estimate)}")
 
     lines.append("")
     lines.append("─" * 30)
@@ -54,6 +75,10 @@ def format_ai_summary(analysis: ItemAnalysis) -> str:
         lines.append("🔎 *Keyword yang disarankan:*")
         for keyword in analysis.search_keywords[:5]:
             lines.append(f"• {_escape(keyword)}")
+
+    if analysis.pricing_notes:
+        lines.append("")
+        lines.append(f"🧠 *Catatan penyesuaian harga:* {_escape(analysis.pricing_notes)}")
 
     lines.append("")
     lines.append("─" * 30)

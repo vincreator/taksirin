@@ -116,6 +116,14 @@ class ItemAnalysis:
     condition_guess: str
     description: str
     search_keywords: list[str] = field(default_factory=list)
+    replaced_parts: list[str] = field(default_factory=list)
+    known_defects: list[str] = field(default_factory=list)
+    positive_notes: list[str] = field(default_factory=list)
+    completeness: str = "Tidak disebutkan"
+    warranty_status: str = "Tidak disebutkan"
+    usage_estimate: str = "Tidak disebutkan"
+    condition_score: Optional[int] = None
+    pricing_notes: str = ""
     estimated_price_min: Optional[int] = None
     estimated_price_max: Optional[int] = None
     confidence: str = "medium"
@@ -134,6 +142,14 @@ Balas dalam format JSON persis seperti ini:
   "condition_guess": "Tidak diketahui kecuali jelas dari teks",
   "description": "Deskripsi singkat 1 kalimat dari barang yang dimaksud user",
   "search_keywords": ["keyword1", "keyword2", "keyword3"],
+    "replaced_parts": ["bagian yang sudah diganti jika disebutkan"],
+    "known_defects": ["minus/masalah jika disebutkan"],
+    "positive_notes": ["poin positif jika disebutkan"],
+    "completeness": "contoh: fullset / unit only / tidak disebutkan",
+    "warranty_status": "contoh: garansi resmi aktif / garansi toko / tidak ada / tidak disebutkan",
+    "usage_estimate": "contoh: pemakaian 1 tahun / tidak disebutkan",
+    "condition_score": 0,
+    "pricing_notes": "catatan singkat faktor harga berdasarkan kondisi",
   "estimated_price_min": 100000,
   "estimated_price_max": 500000,
   "confidence": "low/medium/high"
@@ -143,6 +159,11 @@ Aturan:
 - `search_keywords`: 3-5 kata kunci relevan yang bisa dipakai user untuk pencarian lanjutan
 - Perbaiki typo ringan jika sangat jelas. Contoh: `egel` bisa jadi `eiger`
 - Jangan mengarang model yang tidak ada di teks kecuali koreksi typo sangat yakin
+- `replaced_parts`: isi hanya jika disebutkan jelas (contoh: LCD ganti, baterai ganti), selain itu []
+- `known_defects`: isi hanya jika disebutkan jelas (contoh: layar shadow, retak, face id mati), selain itu []
+- `positive_notes`: isi poin positif eksplisit (contoh: no minus, mulus, fungsi normal), selain itu []
+- `condition_score`: integer 0-100 (100 paling bagus), gunakan konservatif sesuai kondisi yang disebut user
+- `pricing_notes`: jelaskan singkat kenapa range harga naik/turun
 - `estimated_price_min` & `estimated_price_max`: boleh diisi jika yakin, jika tidak isi null
 - `confidence`: seberapa yakin kamu memahami maksud query user
 - Jika query menyebut `bekas`, `second`, `secound`, `second hand`, `seken`, `used`, `preloved`, atau `2nd`, WAJIB gunakan acuan harga barang bekas dan `condition_guess` harus menunjukkan bekas
@@ -237,6 +258,121 @@ def _merge_search_keywords(base_keywords: list[str], query: str, condition_hint:
     return list(dict.fromkeys([keyword.strip() for keyword in keywords if keyword and keyword.strip()]))[:5]
 
 
+def _extract_query_signals(query: str) -> dict:
+    text = (query or "").lower()
+
+    replaced_map = {
+        "LCD ganti": [r"lcd\s*ganti", r"ganti\s*lcd", r"layar\s*ganti", r"screen\s*replacement"],
+        "Baterai ganti": [r"baterai\s*ganti", r"battery\s*ganti", r"ganti\s*baterai"],
+        "Backdoor ganti": [r"backdoor\s*ganti", r"tutup\s*belakang\s*ganti"],
+        "Kamera ganti": [r"kamera\s*ganti", r"ganti\s*kamera"],
+    }
+    defect_map = {
+        "Layar retak": [r"layar\s*retak", r"retak"],
+        "Layar shadow": [r"shadow", r"burn\s*in", r"bayangan\s*layar"],
+        "Touchscreen bermasalah": [r"touch\s*error", r"touch\s*ngaco", r"touchscreen\s*minus"],
+        "Face ID/biometrik bermasalah": [r"face\s*id\s*mati", r"face\s*id\s*error", r"fingerprint\s*mati", r"touch\s*id\s*mati"],
+        "Baterai boros": [r"baterai\s*boros", r"battery\s*health\s*drop", r"soak"],
+        "Sinyal bermasalah": [r"no\s*signal", r"sinyal\s*hilang", r"imei\s*unknown"],
+        "Kamera bermasalah": [r"kamera\s*buram", r"kamera\s*error", r"kamera\s*minus"],
+        "Speaker/mic bermasalah": [r"speaker\s*kresek", r"mic\s*mati", r"audio\s*minus"],
+        "Charging bermasalah": [r"cas\s*lama", r"charging\s*error", r"port\s*cas\s*longgar"],
+        "Minus umum": [r"minus", r"kendala", r"cacat"],
+    }
+    positive_map = {
+        "No minus": [r"no\s*minus", r"tanpa\s*minus"],
+        "Mulus": [r"mulus", r"istimewa"],
+        "Fungsi normal": [r"normal\s*semua", r"fungsi\s*normal", r"full\s*function"],
+        "Jarang pakai": [r"jarang\s*pake", r"jarang\s*pakai"],
+    }
+
+    def collect(mapping: dict[str, list[str]]) -> list[str]:
+        found: list[str] = []
+        for label, patterns in mapping.items():
+            if any(re.search(pattern, text) for pattern in patterns):
+                found.append(label)
+        return found
+
+    replaced_parts = collect(replaced_map)
+    known_defects = collect(defect_map)
+    positive_notes = collect(positive_map)
+
+    if re.search(r"fullset|full\s*set|lengkap\s*dus|kelengkapan\s*lengkap", text):
+        completeness = "Fullset"
+    elif re.search(r"unit\s*only|hp\s*only|dus\s*tidak\s*ada|unit\s*aja", text):
+        completeness = "Unit only"
+    else:
+        completeness = "Tidak disebutkan"
+
+    if re.search(r"garansi\s*resmi|garansi\s*panjang|warranty\s*official", text):
+        warranty_status = "Garansi resmi"
+    elif re.search(r"garansi\s*toko|warranty\s*store", text):
+        warranty_status = "Garansi toko"
+    elif re.search(r"tanpa\s*garansi|no\s*warranty", text):
+        warranty_status = "Tanpa garansi"
+    else:
+        warranty_status = "Tidak disebutkan"
+
+    usage_match = re.search(r"(\d+)\s*(bulan|tahun)", text)
+    usage_estimate = f"Pemakaian {usage_match.group(1)} {usage_match.group(2)}" if usage_match else "Tidak disebutkan"
+
+    return {
+        "replaced_parts": replaced_parts,
+        "known_defects": known_defects,
+        "positive_notes": positive_notes,
+        "completeness": completeness,
+        "warranty_status": warranty_status,
+        "usage_estimate": usage_estimate,
+    }
+
+
+def _merge_unique(primary: list[str], secondary: list[str], limit: int = 6) -> list[str]:
+    merged = list(dict.fromkeys([*(primary or []), *(secondary or [])]))
+    return [item for item in merged if item][:limit]
+
+
+def _compute_condition_score(condition_guess: str, defects: list[str], replaced_parts: list[str], positives: list[str]) -> int:
+    condition_lower = (condition_guess or "").lower()
+    base = 78
+    if "baru" in condition_lower:
+        base = 92
+    elif "bekas" in condition_lower:
+        base = 70
+
+    score = base - (len(defects) * 9) - (len(replaced_parts) * 5) + (len(positives) * 4)
+    return max(35, min(98, score))
+
+
+def _adjust_price_by_condition(
+    price_min: Optional[int],
+    price_max: Optional[int],
+    defects: list[str],
+    replaced_parts: list[str],
+    positives: list[str],
+) -> tuple[Optional[int], Optional[int], str]:
+    if not price_min or not price_max:
+        return price_min, price_max, "Estimasi belum cukup data untuk penyesuaian kondisi."
+
+    penalty = (len(defects) * 0.07) + (len(replaced_parts) * 0.04)
+    bonus = len(positives) * 0.02
+    multiplier = 1.0 - penalty + bonus
+    multiplier = max(0.55, min(1.08, multiplier))
+
+    adjusted_min = int(price_min * multiplier)
+    adjusted_max = int(price_max * multiplier)
+    if adjusted_max < adjusted_min:
+        adjusted_max = adjusted_min
+
+    if multiplier < 0.98:
+        note = "Harga disesuaikan turun karena ada catatan kondisi/minus pada deskripsi."
+    elif multiplier > 1.01:
+        note = "Harga sedikit disesuaikan naik karena kondisi positif yang disebutkan."
+    else:
+        note = "Harga mengikuti baseline pasar dengan penyesuaian kecil kondisi."
+
+    return adjusted_min, adjusted_max, note
+
+
 def _get_cached_analysis(query: str) -> ItemAnalysis | None:
     cached = _RECENT_ANALYSIS_CACHE.get(query)
     if not cached:
@@ -262,6 +398,7 @@ async def analyze_text(query: str) -> ItemAnalysis:
         return _manual_analysis("")
 
     condition_hint = _detect_condition_hint(query)
+    query_signals = _extract_query_signals(query)
 
     cached = _get_cached_analysis(query)
     if cached:
@@ -296,22 +433,69 @@ async def analyze_text(query: str) -> ItemAnalysis:
 
         data = json.loads(raw_text.strip())
 
+        ai_replaced_parts = data.get("replaced_parts", []) or []
+        ai_known_defects = data.get("known_defects", []) or []
+        ai_positive_notes = data.get("positive_notes", []) or []
+
+        merged_replaced_parts = _merge_unique(query_signals["replaced_parts"], ai_replaced_parts)
+        merged_known_defects = _merge_unique(query_signals["known_defects"], ai_known_defects)
+        merged_positive_notes = _merge_unique(query_signals["positive_notes"], ai_positive_notes)
+
+        completeness = query_signals["completeness"]
+        if completeness == "Tidak disebutkan":
+            completeness = data.get("completeness", "Tidak disebutkan") or "Tidak disebutkan"
+
+        warranty_status = query_signals["warranty_status"]
+        if warranty_status == "Tidak disebutkan":
+            warranty_status = data.get("warranty_status", "Tidak disebutkan") or "Tidak disebutkan"
+
+        usage_estimate = query_signals["usage_estimate"]
+        if usage_estimate == "Tidak disebutkan":
+            usage_estimate = data.get("usage_estimate", "Tidak disebutkan") or "Tidak disebutkan"
+
+        condition_guess = _apply_condition_hint(
+            data.get("condition_guess", "Tidak diketahui"),
+            condition_hint,
+        )
+
+        estimated_price_min, estimated_price_max, adjustment_note = _adjust_price_by_condition(
+            data.get("estimated_price_min"),
+            data.get("estimated_price_max"),
+            merged_known_defects,
+            merged_replaced_parts,
+            merged_positive_notes,
+        )
+
+        model_condition_score = data.get("condition_score")
+        computed_condition_score = _compute_condition_score(
+            condition_guess,
+            merged_known_defects,
+            merged_replaced_parts,
+            merged_positive_notes,
+        )
+        condition_score = model_condition_score if isinstance(model_condition_score, int) else computed_condition_score
+
         result = ItemAnalysis(
             item_name=data.get("item_name", query) or query,
             brand=data.get("brand", "Tidak diketahui"),
             category=data.get("category", "Lainnya"),
-            condition_guess=_apply_condition_hint(
-                data.get("condition_guess", "Tidak diketahui"),
-                condition_hint,
-            ),
+            condition_guess=condition_guess,
             description=data.get("description", f"Analisis berbasis query: {query}"),
             search_keywords=_merge_search_keywords(
                 data.get("search_keywords", [query]) or [query],
                 query,
                 condition_hint,
             ),
-            estimated_price_min=data.get("estimated_price_min"),
-            estimated_price_max=data.get("estimated_price_max"),
+            replaced_parts=merged_replaced_parts,
+            known_defects=merged_known_defects,
+            positive_notes=merged_positive_notes,
+            completeness=completeness,
+            warranty_status=warranty_status,
+            usage_estimate=usage_estimate,
+            condition_score=condition_score,
+            pricing_notes=(data.get("pricing_notes", "") or adjustment_note)[:220],
+            estimated_price_min=estimated_price_min,
+            estimated_price_max=estimated_price_max,
             confidence=data.get("confidence", "medium"),
         )
         logger.info(
@@ -362,7 +546,7 @@ async def _generate_with_gemini(query: str, condition_hint: str | None) -> tuple
                 contents=[prompt, f"Query user: {query}"],
                 config=types.GenerateContentConfig(
                     temperature=0.2,
-                    max_output_tokens=220,
+                    max_output_tokens=420,
                 ),
             )
             return response.text or "", model_name
@@ -392,7 +576,7 @@ async def _generate_with_groq(query: str, condition_hint: str | None) -> tuple[s
             response = await _groq_client.chat.completions.create(
                 model=model_name,
                 temperature=0.2,
-                max_tokens=220,
+                max_tokens=420,
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": prompt},
@@ -419,6 +603,7 @@ async def _generate_with_groq(query: str, condition_hint: str | None) -> tuple[s
 def _manual_analysis(query: str, error: str | None = None) -> ItemAnalysis:
     cleaned = (query or "").strip()
     condition_hint = _detect_condition_hint(cleaned)
+    query_signals = _extract_query_signals(cleaned)
     keywords = [cleaned] if cleaned else []
     tokens = re.findall(r"[a-zA-Z0-9]+", cleaned)
     if len(tokens) >= 2:
@@ -427,14 +612,29 @@ def _manual_analysis(query: str, error: str | None = None) -> ItemAnalysis:
         keywords.append(" ".join(tokens[-2:]))
 
     deduped_keywords = _merge_search_keywords(keywords, cleaned, condition_hint)
+    condition_guess = condition_hint or "Tidak diketahui"
+    condition_score = _compute_condition_score(
+        condition_guess,
+        query_signals["known_defects"],
+        query_signals["replaced_parts"],
+        query_signals["positive_notes"],
+    )
 
     return ItemAnalysis(
         item_name=cleaned or "Tidak diketahui",
         brand="Manual",
         category="Tidak diketahui",
-        condition_guess=condition_hint or "Tidak diketahui",
+        condition_guess=condition_guess,
         description=f"Analisis berbasis teks: {cleaned}" if cleaned else "",
         search_keywords=deduped_keywords,
+        replaced_parts=query_signals["replaced_parts"],
+        known_defects=query_signals["known_defects"],
+        positive_notes=query_signals["positive_notes"],
+        completeness=query_signals["completeness"],
+        warranty_status=query_signals["warranty_status"],
+        usage_estimate=query_signals["usage_estimate"],
+        condition_score=condition_score,
+        pricing_notes="Fallback manual: detail kondisi diambil dari teks yang kamu kirim.",
         estimated_price_min=None,
         estimated_price_max=None,
         confidence="medium",
