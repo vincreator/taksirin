@@ -5,6 +5,7 @@ Bot Telegram untuk membantu menaksir harga barang berbasis teks menggunakan prov
 ## Fitur
 
 - 📝 Analisis hanya lewat command `/taksir`
+- 🌐 Cek harga online realtime lewat `/taksir_online` \(Google Shopping via SerpAPI\)
 - 🤖 Gemini atau Groq merapikan query dan memahami konteks barang
 - 💰 Bot memberi estimasi harga, kategori, merek, dan tingkat keyakinan
 - 🔎 Bot memberi keyword pencarian yang lebih tepat
@@ -43,6 +44,10 @@ GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.0-flash-lite
 GROQ_API_KEY=your_groq_api_key_here
 GROQ_MODEL=llama-3.1-8b-instant
+SERPAPI_KEY=your_serpapi_key_here
+GOOGLE_SHOPPING_GL=id
+GOOGLE_SHOPPING_HL=id
+GOOGLE_SHOPPING_NUM=10
 ```
 
 Untuk pindah ke Groq, cukup ubah:
@@ -66,7 +71,8 @@ python bot.py
 1. Jalankan bot
 2. Kirim `/start`
 3. Kirim command seperti `/taksir iPhone 13 128GB` atau `/taksir Honda Beat 2022`
-4. Bot akan mengembalikan ringkasan analisis dan estimasi harga
+4. Atau gunakan `/taksir_online iPhone 13 128GB` untuk cek listing online terbaru
+5. Bot akan mengembalikan ringkasan analisis dan/atau harga online
 
 ## Catatan
 

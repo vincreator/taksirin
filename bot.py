@@ -16,7 +16,12 @@ from telegram.ext import (
 )
 
 from config import BOT_TOKEN
-from handlers.text_handler import handle_start, handle_help, handle_taksir
+from handlers.text_handler import (
+    handle_start,
+    handle_help,
+    handle_taksir,
+    handle_taksir_online,
+)
 
 # ─── Logging ──────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -58,6 +63,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", handle_start))
     app.add_handler(CommandHandler("help", handle_help))
     app.add_handler(CommandHandler("taksir", handle_taksir))
+    app.add_handler(CommandHandler("taksir_online", handle_taksir_online))
     app.add_error_handler(handle_app_error)
 
     logger.info("✅ Bot siap! Menunggu pesan masuk...")

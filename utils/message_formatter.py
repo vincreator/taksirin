@@ -6,6 +6,7 @@ Membuat pesan Telegram yang rapi dari hasil analisis AI.
 
 from __future__ import annotations
 
+from services.google_shopping_service import ShoppingSummary
 from services.vision_service import ItemAnalysis
 
 
@@ -103,6 +104,60 @@ def format_error_message(error: str) -> str:
         f"`{_escape(error[:200])}`\n\n"
         f"Silakan coba lagi dengan query teks yang lebih spesifik\\."
     )
+
+
+def format_online_summary(analysis: ItemAnalysis, summary: ShoppingSummary) -> str:
+    lines: list[str] = []
+
+    condition_lower = (analysis.condition_guess or "").lower()
+    if "bekas" in condition_lower or "second" in condition_lower or "seken" in condition_lower:
+        price_label = "🌐 *Harga Online Bekas:*"
+    elif "baru" in condition_lower or "new" in condition_lower or "segel" in condition_lower:
+        price_label = "🌐 *Harga Online Baru:*"
+    else:
+        price_label = "🌐 *Harga Online:*"
+
+    lines.append("🏷️ *Hasil Taksir Online*")
+    lines.append("")
+    lines.append(f"📦 *Nama:* {_escape(analysis.item_name)}")
+    lines.append(f"🔧 *Kondisi:* {_escape(analysis.condition_guess)}")
+    lines.append(f"🔎 *Query online:* {_escape(summary.query_used)}")
+
+    if summary.error:
+        lines.append("")
+        lines.append(f"⚠️ *Lookup online gagal:* {_escape(summary.error[:180])}")
+
+    if summary.total_found > 0 and summary.price_min and summary.price_max:
+        lines.append("")
+        lines.append(price_label)
+        lines.append(f"   {_rp(summary.price_min)} – {_rp(summary.price_max)}")
+        lines.append(f"📊 *Ringkasan {summary.total_found} listing:*")
+        lines.append(f"   • Rata\\-rata: {_rp(summary.price_avg)}")
+        lines.append(f"   • Median: {_rp(summary.price_median)}")
+    else:
+        lines.append("")
+        lines.append("⚠️ *Belum ada harga online yang valid dari listing yang ditemukan\\.*")
+
+    if summary.items:
+        lines.append("")
+        lines.append("🛒 *Listing Google Shopping teratas:*")
+        for idx, item in enumerate(summary.items[:5], start=1):
+            title = _escape(item.title[:70] + ("…" if len(item.title) > 70 else ""))
+            store = _escape(item.store) if item.store else "Toko tidak diketahui"
+            price = _rp(item.price) if item.price else _escape(item.price_text or "Harga tidak tercantum")
+            link = f"[Lihat]({item.link})" if item.link else ""
+            lines.append(f"{idx}\\. {title}")
+            lines.append(f"   • Toko: {store}")
+            lines.append(f"   • Harga: {price} {link}")
+
+    lines.append("")
+    lines.append("─" * 30)
+    lines.append("")
+    lines.append("💡 Gunakan `/taksir` untuk analisis AI detail kondisi, atau `/taksir_online` untuk cek harga listing online terbaru")
+    lines.append("")
+    lines.append("_⚡ Powered by @XiXuGi_")
+
+    return "\n".join(lines)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
