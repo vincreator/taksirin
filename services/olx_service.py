@@ -76,6 +76,8 @@ async def search_olx(query: str) -> list[OLXProduct]:
 async def _search_via_api(query: str) -> list[OLXProduct]:
     """Gunakan OLX API internal."""
     params = {
+        "clientId": "pwa",
+        "clientVersion": "11.0.3",
         "location": "1000000",   # Seluruh Indonesia
         "q": query,
         "page": 1,
@@ -97,6 +99,7 @@ async def _search_via_api(query: str) -> list[OLXProduct]:
                     headers=headers,
                     timeout=5.0,
                     follow_redirects=True,
+                    trust_env=False,
                 ) as client:
                     resp = await client.get(OLX_API_URL, params=params)
 
@@ -130,7 +133,7 @@ async def _search_via_api(query: str) -> list[OLXProduct]:
                     location=_extract_location(ad),
                     url=_extract_url(ad),
                     image_url=_extract_image(ad),
-                    date_posted=ad.get("list_time", ""),
+                    date_posted=ad.get("display_date", "") or ad.get("created_at", ""),
                 )
             )
         return products
@@ -156,6 +159,7 @@ async def _search_via_html(query: str) -> list[OLXProduct]:
                     headers=HEADERS,
                     timeout=6.0,
                     follow_redirects=True,
+                    trust_env=False,
                 ) as client:
                     resp = await client.get(url)
                     resp.raise_for_status()
@@ -267,7 +271,15 @@ def _parse_html_cards(html: str) -> list[OLXProduct]:
 def _extract_price(ad: dict) -> tuple[int, str]:
     price = ad.get("price", {})
     if isinstance(price, dict):
-        text = price.get("display", "") or price.get("value", "") or ""
+        # Format OLX terbaru: price.value.raw + price.value.display
+        nested = price.get("value", {})
+        if isinstance(nested, dict):
+            raw = nested.get("raw", 0)
+            display = nested.get("display", "")
+            if isinstance(raw, (int, float)):
+                return int(raw), display or f"Rp {int(raw):,}"
+
+        text = price.get("display", "") or ""
         value = price.get("value", 0)
         if isinstance(value, (int, float)):
             return int(value), text or f"Rp {int(value):,}"
@@ -278,6 +290,15 @@ def _extract_price(ad: dict) -> tuple[int, str]:
 
 
 def _extract_location(ad: dict) -> str:
+    loc_resolved = ad.get("locations_resolved", {})
+    if isinstance(loc_resolved, dict):
+        city = loc_resolved.get("ADMIN_LEVEL_3_name", "")
+        district = loc_resolved.get("SUBLOCALITY_LEVEL_1_name", "")
+        if city and district:
+            return f"{district}, {city}"
+        if city:
+            return city
+
     loc = ad.get("locations", [{}])
     if isinstance(loc, list) and loc:
         return loc[0].get("name", "")
@@ -288,6 +309,12 @@ def _extract_url(ad: dict) -> str:
     url = ad.get("url", "") or ad.get("permalink", "")
     if url and not url.startswith("http"):
         url = "https://www.olx.co.id" + url
+    if not url:
+        ad_id = str(ad.get("ad_id", "") or ad.get("id", "")).strip()
+        title = str(ad.get("title", "")).strip()
+        if ad_id:
+            slug = _slugify(title)[:80] or "item"
+            url = f"https://www.olx.co.id/item/{slug}-iid-{ad_id}"
     return url
 
 
@@ -304,3 +331,11 @@ def _extract_image(ad: dict) -> str:
 def _price_from_text(text: str) -> int:
     digits = re.sub(r"[^\d]", "", text)
     return int(digits) if digits else 0
+
+
+def _slugify(text: str) -> str:
+    value = (text or "").strip().lower()
+    value = re.sub(r"[^a-z0-9\s-]", "", value)
+    value = re.sub(r"\s+", "-", value)
+    value = re.sub(r"-+", "-", value).strip("-")
+    return value

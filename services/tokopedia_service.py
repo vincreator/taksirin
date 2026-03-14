@@ -134,6 +134,7 @@ async def _request_tokopedia_json(params: dict, query: str) -> dict:
                 headers=HEADERS,
                 timeout=15.0,
                 follow_redirects=True,
+                trust_env=False,
             ) as client:
                 resp = await client.get(TOKOPEDIA_SEARCH_URL, params=params)
 
