@@ -1,36 +1,35 @@
 """
 text_handler.py
 ───────────────
-Handler untuk command /start dan /help.
+Handler untuk command /start, /help, dan pencarian teks.
 """
 
 from __future__ import annotations
 
 from telegram import Update
-from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
+from telegram.ext import ContextTypes
 
-from services.price_aggregator import aggregate_prices
-from services.vision_service import ItemAnalysis
-from utils.message_formatter import format_price_summary
+from config import AI_PROVIDER_LABEL
+from services.vision_service import analyze_text
+from utils.message_formatter import format_ai_summary
 
 
 WELCOME_MESSAGE = """
 👋 *Selamat datang di TaksirinBot\\!*
 
-Saya bisa menaksir harga barang dengan *scraping manual* dari keyword\\!
+Saya bisa menaksir harga barang dengan *AI text*\\!
 
-📸 *Cara pakai:*
+📝 *Cara pakai:*
 • Kirim *teks nama barang* \\(contoh: `iPhone 12 128GB`\\)
-• Atau kirim foto + caption nama barang
 
 🔍 *Yang saya lakukan:*
-1\\. Ambil keyword dari kamu
-2\\. Cari harga di *Tokopedia* dan *OLX*
-3\\. Tampilkan estimasi harga pasaran
+1\\. Rapikan keyword dengan AI
+2\\. Pahami merek, kategori, dan konteks barang
+3\\. Tampilkan estimasi harga dan keyword yang lebih tepat
 
 💡 *Tips agar hasil akurat:*
-• Tulis merek + model + kapasitas/seri
+• Tulis merek \\+ model \\+ kapasitas/seri
 • Contoh: `Samsung S23 Ultra 256GB`
 
 🚀 Langsung kirim keyword barang kamu sekarang\\!
@@ -44,11 +43,10 @@ HELP_MESSAGE = """
 /help  \\- Tampilkan pesan ini
 
 *Cara menggunakan:*
-Kirim teks nama barang → bot cari harga di marketplace
+Kirim teks nama barang → bot analisis dan beri estimasi harga
 
-*Didukung oleh:*
-🛍️ Tokopedia
-🏪 OLX Indonesia
+*Dibuat oleh:*
+🤖 @XiXUGi
 """
 
 
@@ -69,7 +67,7 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handler teks biasa: langsung jadikan keyword pencarian manual."""
+    """Handler teks: AI memahami query lalu memberi estimasi harga."""
     message = update.effective_message
     if not message or not message.text:
         return
@@ -78,25 +76,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not query:
         return
 
-    status_msg = await message.reply_text("🔍 Mencari harga di Tokopedia & OLX...")
+    status_msg = await message.reply_text(f"🔍 Menganalisis barang dengan {AI_PROVIDER_LABEL}...")
 
-    analysis = ItemAnalysis(
-        item_name=query,
-        brand="Manual",
-        category="Tidak diketahui",
-        condition_guess="Tidak diketahui",
-        description=f"Pencarian manual berdasarkan keyword: {query}",
-        search_keywords=[query],
-        estimated_price_min=None,
-        estimated_price_max=None,
-        confidence="high",
-    )
-
-    summary = await aggregate_prices(analysis)
-    result_text = format_price_summary(summary)
+    analysis = await analyze_text(query)
+    result_text = format_ai_summary(analysis)
 
     await status_msg.edit_text(
         result_text,
         parse_mode=ParseMode.MARKDOWN_V2,
-        disable_web_page_preview=True,
     )
+

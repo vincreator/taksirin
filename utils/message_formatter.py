@@ -1,47 +1,25 @@
 """
 message_formatter.py
 ─────────────────────
-Membuat pesan Telegram yang rapi dari hasil analisis & taksiran harga.
+Membuat pesan Telegram yang rapi dari hasil analisis AI.
 """
 
 from __future__ import annotations
 
-from services.price_aggregator import PriceSummary
+from config import AI_PROVIDER_LABEL
 from services.vision_service import ItemAnalysis
 
 
-def format_analyzing_message() -> str:
-    """Pesan saat bot sedang memproses foto."""
-    return (
-        "🔍 *Sedang menganalisis foto...*\n\n"
-        "_Mohon tunggu, saya sedang mengenali barang dan mencari harga di marketplace._"
-    )
-
-
-def format_item_not_found() -> str:
-    """Pesan jika barang tidak berhasil diidentifikasi."""
-    return (
-        "❌ *Barang tidak berhasil diidentifikasi*\n\n"
-        "Foto yang kamu kirim kurang jelas atau tidak menampilkan barang secara terlihat.\n\n"
-        "💡 *Tips:*\n"
-        "• Pastikan barang terlihat jelas di foto\n"
-        "• Gunakan pencahayaan yang cukup\n"
-        "• Foto dari depan/samping agar detail terlihat"
-    )
-
-
-def format_price_summary(summary: PriceSummary) -> str:
-    """
-    Buat pesan lengkap hasil taksiran harga.
-
-    Args:
-        summary: PriceSummary dari price_aggregator
-
-    Returns:
-        String pesan dalam format Markdown (Telegram MarkdownV2-safe)
-    """
-    analysis = summary.item_analysis
+def format_ai_summary(analysis: ItemAnalysis) -> str:
+    """Buat pesan lengkap hasil analisis AI text-only."""
     lines: list[str] = []
+    condition_lower = (analysis.condition_guess or "").lower()
+    if "bekas" in condition_lower or "second" in condition_lower or "seken" in condition_lower:
+        price_label = "🤖 *Estimasi Harga Bekas:*"
+    elif "baru" in condition_lower or "new" in condition_lower or "segel" in condition_lower:
+        price_label = "🤖 *Estimasi Harga Baru:*"
+    else:
+        price_label = "🤖 *Estimasi Harga:*"
 
     # ── Header identifikasi barang ──────────────────────────────────────────
     confidence_emoji = {"high": "✅", "medium": "🟡", "low": "🔴"}.get(
@@ -64,63 +42,32 @@ def format_price_summary(summary: PriceSummary) -> str:
     # ── Estimasi harga dari AI ──────────────────────────────────────────────
     if analysis.estimated_price_min and analysis.estimated_price_max:
         lines.append("")
-        lines.append("🤖 *Estimasi Harga \\(dari AI\\):*")
+        lines.append(price_label)
         lines.append(
             f"   {_rp(analysis.estimated_price_min)} – {_rp(analysis.estimated_price_max)}"
         )
+    else:
+        lines.append("")
+        lines.append(f"{price_label} belum cukup yakin untuk memberi angka spesifik")
 
-    # ── Statistik harga dari marketplace ───────────────────────────────────
-    if summary.total_found > 0 and summary.price_min > 0:
+    if analysis.search_keywords:
         lines.append("")
-        lines.append(f"📊 *Taksiran Harga Marketplace \\({summary.total_found} iklan\\):*")
-        lines.append(f"   🔻 Terendah : *{_rp(summary.price_min)}*")
-        lines.append(f"   🔺 Tertinggi: *{_rp(summary.price_max)}*")
-        lines.append(f"   📈 Rata\\-rata: *{_rp(summary.price_avg)}*")
-        lines.append(f"   📉 Median   : *{_rp(summary.price_median)}*")
-    elif summary.total_found == 0:
-        lines.append("")
-        lines.append("⚠️ _Tidak ada hasil ditemukan di marketplace\\._")
-        lines.append("💡 Coba kirim keyword lebih spesifik: *merek + model + kapasitas/seri*")
-        lines.append("   Contoh: `Infinix Note 40 256GB` atau `Honda Beat 2021`")
+        lines.append("🔎 *Keyword yang disarankan:*")
+        for keyword in analysis.search_keywords[:5]:
+            lines.append(f"• {_escape(keyword)}")
 
     lines.append("")
     lines.append("─" * 30)
 
-    # ── Hasil per marketplace ───────────────────────────────────────────────
-    tokopedia_items = [r for r in summary.results if r.source == "Tokopedia"]
-    olx_items = [r for r in summary.results if r.source == "OLX"]
+    lines.append("")
+    lines.append("💡 Kirim query lebih spesifik untuk hasil lebih akurat, misalnya: `iPhone 13 Pro 256GB Sierra Blue`")
 
-    if tokopedia_items:
+    if analysis.error:
         lines.append("")
-        lines.append("🛍️ *Tokopedia:*")
-        for i, item in enumerate(tokopedia_items[:5], 1):
-            price_str = _rp(item.price) if item.price > 0 else "Nego"
-            name_short = _escape(item.name[:50] + ("…" if len(item.name) > 50 else ""))
-            location = f" · {_escape(item.location)}" if item.location else ""
-            extra = f" {_escape(item.extra)}" if item.extra else ""
-            url_text = f"[Lihat]({item.url})" if item.url else ""
-            lines.append(
-                f"  {i}\\. {name_short}\n"
-                f"     💰 *{price_str}*{location}{extra} {url_text}"
-            )
-
-    if olx_items:
-        lines.append("")
-        lines.append("🏪 *OLX:*")
-        for i, item in enumerate(olx_items[:5], 1):
-            price_str = _rp(item.price) if item.price > 0 else "Nego"
-            name_short = _escape(item.name[:50] + ("…" if len(item.name) > 50 else ""))
-            location = f" · {_escape(item.location)}" if item.location else ""
-            url_text = f"[Lihat]({item.url})" if item.url else ""
-            lines.append(
-                f"  {i}\\. {name_short}\n"
-                f"     💰 *{price_str}*{location} {url_text}"
-            )
+        lines.append(f"⚠️ *Mode fallback aktif:* {_escape(analysis.error[:160])}")
 
     lines.append("")
-    lines.append("─" * 30)
-    lines.append("")
-    lines.append("_⚡ Powered by Gemini Vision \\+ Tokopedia \\+ OLX_")
+    lines.append("_⚡ Powered by @XiXuGi_")
 
     return "\n".join(lines)
 
@@ -130,7 +77,7 @@ def format_error_message(error: str) -> str:
     return (
         f"❌ *Terjadi kesalahan*\n\n"
         f"`{_escape(error[:200])}`\n\n"
-        f"Silakan coba lagi atau kirim foto yang berbeda\\."
+        f"Silakan coba lagi dengan query teks yang lebih spesifik\\."
     )
 
 

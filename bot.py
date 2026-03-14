@@ -18,7 +18,6 @@ from telegram.ext import (
 )
 
 from config import BOT_TOKEN
-from handlers.photo_handler import handle_photo
 from handlers.text_handler import handle_start, handle_help, handle_text
 
 # ─── Logging ──────────────────────────────────────────────────────────────
@@ -60,15 +59,6 @@ def main() -> None:
     # ── Daftarkan handlers ────────────────────────────────────────────────
     app.add_handler(CommandHandler("start", handle_start))
     app.add_handler(CommandHandler("help", handle_help))
-
-    # Handler foto (termasuk foto yang dikirim sebagai file/dokumen)
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(
-        MessageHandler(
-            filters.Document.IMAGE,   # Gambar yang dikirim sebagai file
-            handle_photo,
-        )
-    )
 
     # Handler teks biasa
     app.add_handler(
